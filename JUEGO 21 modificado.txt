@@ -1,0 +1,570 @@
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <cstdlib>
+#include <ctime>
+
+using namespace std;
+
+// ==========================================
+// CLASE CONFIGURACION
+// Lee los datos del archivo setup.txt
+// ==========================================
+
+class Configuracion {
+private:
+    int numeroJugadores;
+    string palos[4];
+    int objetivo;
+
+    string limpiar(string texto);
+    bool siguienteLinea(ifstream &archivo, string &resultado);
+
+public:
+    Configuracion();
+    bool cargar();
+    int getNumeroJugadores();
+    int getObjetivo();
+    string getPalo(int posicion);
+};
+
+Configuracion::Configuracion() {
+    numeroJugadores = 0;
+    objetivo = 21;
+
+    for (int i = 0; i < 4; i++) {
+        palos[i] = "";
+    }
+}
+
+// Quita el BOM, espacios y saltos de linea sobrantes
+string Configuracion::limpiar(string texto) {
+    if (texto.size() >= 3 &&
+        (unsigned char)texto[0] == 0xEF &&
+        (unsigned char)texto[1] == 0xBB &&
+        (unsigned char)texto[2] == 0xBF) {
+        texto = texto.substr(3);
+    }
+
+    size_t inicio = texto.find_first_not_of(" \t\r\n");
+
+    if (inicio == string::npos) {
+        return "";
+    }
+
+    size_t fin = texto.find_last_not_of(" \t\r\n");
+
+    return texto.substr(inicio, fin - inicio + 1);
+}
+
+// Lee la siguiente linea que no este vacia
+bool Configuracion::siguienteLinea(ifstream &archivo, string &resultado) {
+    string linea;
+
+    while (getline(archivo, linea)) {
+        linea = limpiar(linea);
+
+        if (linea != "") {
+            resultado = linea;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool Configuracion::cargar() {
+    ifstream archivo("setup.txt");
+
+    if (!archivo.is_open()) {
+        cout << "Error: no se encontro el archivo setup.txt." << endl;
+        cout << "Debe estar en la carpeta de ejecucion del programa." << endl;
+        return false;
+    }
+
+    string linea;
+
+    // Linea 1: numero de jugadores
+    if (!siguienteLinea(archivo, linea)) {
+        cout << "Error: falta el numero de jugadores." << endl;
+        return false;
+    }
+
+    numeroJugadores = atoi(linea.c_str());
+
+    if (numeroJugadores < 1 || numeroJugadores > 5) {
+        cout << "Error: el numero de jugadores debe estar entre 1 y 5." << endl;
+        return false;
+    }
+
+    // Lineas 2 a 5: nombres de los 4 palos
+    for (int i = 0; i < 4; i++) {
+        if (!siguienteLinea(archivo, palos[i])) {
+            cout << "Error: faltan palos. Se necesitan 4." << endl;
+            return false;
+        }
+    }
+
+    // Linea 6: valor para ganar el juego
+    if (!siguienteLinea(archivo, linea)) {
+        cout << "Error: falta el valor objetivo." << endl;
+        return false;
+    }
+
+    objetivo = atoi(linea.c_str());
+
+    if (objetivo < 10) {
+        cout << "Error: el objetivo debe ser al menos 10." << endl;
+        return false;
+    }
+
+    archivo.close();
+    return true;
+}
+
+int Configuracion::getNumeroJugadores() {
+    return numeroJugadores;
+}
+
+int Configuracion::getObjetivo() {
+    return objetivo;
+}
+
+string Configuracion::getPalo(int posicion) {
+    if (posicion < 0 || posicion >= 4) {
+        return "";
+    }
+
+    return palos[posicion];
+}
+
+// ==========================================
+// CLASE CARTA
+// numero: 1 = As, 2 a 10, 11 = J, 12 = Q, 13 = K
+// el palo es el nombre que viene de setup.txt
+// ==========================================
+
+class Carta {
+private:
+    int numero;
+    string palo;
+
+public:
+    Carta(int _numero, string _palo);
+    void mostrar();
+    int obtenervalor();
+    int obtenerNumero();
+};
+
+Carta::Carta(int _numero, string _palo) {
+    numero = _numero;
+    palo = _palo;
+}
+
+void Carta::mostrar() {
+    if (numero == 1)
+        cout << "As";
+    else if (numero >= 2 && numero <= 10)
+        cout << numero;
+    else if (numero == 11)
+        cout << "J";
+    else if (numero == 12)
+        cout << "Q";
+    else
+        cout << "K";
+
+    cout << " de " << palo;
+}
+
+// As vale 11 (despues puede bajar a 1), J, Q, K valen 10
+int Carta::obtenervalor() {
+    if (numero >= 11)
+        return 10;
+
+    if (numero == 1)
+        return 11;
+
+    return numero;
+}
+
+int Carta::obtenerNumero() {
+    return numero;
+}
+
+// ==========================================
+// CLASE ALEATORIO
+// Baraja de 52 cartas mezcladas
+// ==========================================
+
+class Aleatorio {
+private:
+    Carta* baraja[52];
+    int siguiente;
+
+public:
+    Aleatorio(Configuracion &configuracion);
+    ~Aleatorio();
+    Carta* repartir();
+};
+
+Aleatorio::Aleatorio(Configuracion &configuracion) {
+    int posicion = 0;
+
+    // Crear las 52 cartas: 4 palos x 13 numeros
+    for (int palo = 0; palo < 4; palo++) {
+        for (int numero = 1; numero <= 13; numero++) {
+            baraja[posicion] = new Carta(numero, configuracion.getPalo(palo));
+            posicion++;
+        }
+    }
+
+    // Mezclar las 52 cartas
+    for (int i = 51; i > 0; i--) {
+        int aleatorio = rand() % (i + 1);
+
+        Carta* temporal = baraja[i];
+        baraja[i] = baraja[aleatorio];
+        baraja[aleatorio] = temporal;
+    }
+
+    siguiente = 0;
+}
+
+Aleatorio::~Aleatorio() {
+    for (int i = 0; i < 52; i++) {
+        delete baraja[i];
+    }
+}
+
+Carta* Aleatorio::repartir() {
+    if (siguiente >= 52)
+        return NULL;
+
+    return baraja[siguiente++];
+}
+
+// ==========================================
+// CLASE JUGADOR
+// Nombre y cartas de un jugador
+// ==========================================
+
+class Jugador {
+protected:
+    string nombre;
+    Carta* cartas[20];
+    int cantidad;
+    int objetivo;
+
+public:
+    Jugador();
+
+    void setNombre(string nombreJugador);
+    void setObjetivo(int valorObjetivo);
+    string getNombre();
+    int getCantidad();
+
+    void recibir(Aleatorio &a);
+    void mostrarCartas();
+    int calcularPuntos();
+};
+
+Jugador::Jugador() {
+    nombre = "";
+    cantidad = 0;
+    objetivo = 21;
+}
+
+void Jugador::setNombre(string nombreJugador) {
+    nombre = nombreJugador;
+}
+
+void Jugador::setObjetivo(int valorObjetivo) {
+    objetivo = valorObjetivo;
+}
+
+string Jugador::getNombre() {
+    return nombre;
+}
+
+int Jugador::getCantidad() {
+    return cantidad;
+}
+
+void Jugador::recibir(Aleatorio &a) {
+    if (cantidad < 20) {
+        Carta* nueva = a.repartir();
+
+        if (nueva != NULL) {
+            cartas[cantidad] = nueva;
+            cantidad++;
+        }
+    }
+}
+
+void Jugador::mostrarCartas() {
+    for (int i = 0; i < cantidad; i++) {
+        cout << "  ";
+        cartas[i]->mostrar();
+        cout << endl;
+    }
+}
+
+// Los ases valen 11, pero bajan a 1 si te pasas del objetivo
+int Jugador::calcularPuntos() {
+    int puntos = 0;
+    int ases = 0;
+
+    for (int i = 0; i < cantidad; i++) {
+        puntos += cartas[i]->obtenervalor();
+
+        if (cartas[i]->obtenerNumero() == 1)
+            ases++;
+    }
+
+    while (puntos > objetivo && ases > 0) {
+        puntos -= 10;
+        ases--;
+    }
+
+    return puntos;
+}
+
+// ==========================================
+// CLASE JEFE (DEALER)
+// Es un jugador que muestra 1 carta, esconde
+// la otra y juega al final como la mesa
+// ==========================================
+
+class Jefe : public Jugador {
+public:
+    void mostrarPrimera();
+    void jugar(Aleatorio &a);
+};
+
+void Jefe::mostrarPrimera() {
+    cout << "\n===== DEALER =====" << endl;
+    cout << "Primera carta: ";
+    cartas[0]->mostrar();
+    cout << "\nSegunda carta: [OCULTA]" << endl;
+}
+
+// El Dealer revela y pide cartas hasta llegar a (objetivo - 4)
+void Jefe::jugar(Aleatorio &a) {
+    int limite = objetivo - 4;
+
+    cout << "\n===== TURNO DEL DEALER =====" << endl;
+    cout << "Cartas del Dealer:" << endl;
+    mostrarCartas();
+
+    int puntos = calcularPuntos();
+    cout << "Puntos del Dealer: " << puntos << endl;
+
+    while (puntos < limite) {
+        cout << "\nEl Dealer pide una carta: ";
+        recibir(a);
+
+        cartas[cantidad - 1]->mostrar();
+        cout << endl;
+
+        puntos = calcularPuntos();
+        cout << "Puntos del Dealer: " << puntos << endl;
+    }
+}
+
+// ==========================================
+// CLASE JUEGO21
+// Controla el desarrollo del juego
+// ==========================================
+
+class Juego21 {
+private:
+    Configuracion configuracion;
+    Jugador jugadores[5];
+    Jefe dealer;
+
+    void turnoJugador(int i, Aleatorio &a);
+    void mostrarResultados();
+
+public:
+    void iniciar();
+};
+
+void Juego21::iniciar() {
+    if (!configuracion.cargar()) {
+        cout << "\nNo se pudo iniciar el juego." << endl;
+        return;
+    }
+
+    srand((unsigned int)time(0));
+
+    int objetivo = configuracion.getObjetivo();
+    int numero = configuracion.getNumeroJugadores();
+
+    cout << "============================" << endl;
+    cout << "       JUEGO DE " << objetivo << endl;
+    cout << "============================" << endl;
+    cout << "Jugadores: " << numero << endl;
+    cout << "Objetivo: " << objetivo << endl;
+    cout << "Palos:" << endl;
+
+    for (int i = 0; i < 4; i++) {
+        cout << "- " << configuracion.getPalo(i) << endl;
+    }
+
+    for (int i = 0; i < numero; i++) {
+        string nombre;
+
+        cout << "\nNombre del jugador " << i + 1 << ": ";
+        cin >> nombre;
+
+        jugadores[i].setNombre(nombre);
+        jugadores[i].setObjetivo(objetivo);
+    }
+
+    dealer.setNombre("Dealer");
+    dealer.setObjetivo(objetivo);
+
+    Aleatorio baraja(configuracion);
+
+    // Repartir dos cartas a cada jugador y al Dealer
+    for (int ronda = 0; ronda < 2; ronda++) {
+        for (int i = 0; i < numero; i++) {
+            jugadores[i].recibir(baraja);
+        }
+
+        dealer.recibir(baraja);
+    }
+
+    // Turnos de los jugadores
+    for (int i = 0; i < numero; i++) {
+        turnoJugador(i, baraja);
+    }
+
+    // Turno del Dealer
+    dealer.jugar(baraja);
+
+    mostrarResultados();
+}
+
+void Juego21::turnoJugador(int i, Aleatorio &a) {
+    int objetivo = configuracion.getObjetivo();
+    int opcion;
+
+    cout << "\n****************************" << endl;
+    cout << "Turno de " << jugadores[i].getNombre() << endl;
+    cout << "****************************" << endl;
+
+    dealer.mostrarPrimera();
+
+    int puntos = jugadores[i].calcularPuntos();
+
+    while (puntos < objetivo) {
+        cout << "\n===== TUS CARTAS (" << jugadores[i].getNombre()
+             << ") =====" << endl;
+        jugadores[i].mostrarCartas();
+        cout << "Tus puntos: " << puntos << endl;
+
+        cout << "\n1. Pedir otra carta" << endl;
+        cout << "2. Quedarme" << endl;
+        cout << "Elige: ";
+
+        if (!(cin >> opcion)) {
+            cin.clear();
+            cin.ignore(1000, '\n');
+            opcion = 0;
+        }
+
+        if (opcion == 1) {
+            jugadores[i].recibir(a);
+            puntos = jugadores[i].calcularPuntos();
+
+            if (puntos > objetivo) {
+                cout << "\nTus cartas:" << endl;
+                jugadores[i].mostrarCartas();
+                cout << "Tus puntos: " << puntos << endl;
+                cout << "Te pasaste de " << objetivo << ". Pierdes." << endl;
+            }
+        } else if (opcion == 2) {
+            break;
+        } else {
+            cout << "Opcion incorrecta." << endl;
+        }
+    }
+
+    if (puntos == objetivo) {
+        cout << "\nTienes " << objetivo << " puntos." << endl;
+    }
+
+    if (puntos <= objetivo) {
+        cout << "\n" << jugadores[i].getNombre()
+             << " se quedo con " << puntos << " puntos." << endl;
+    }
+}
+
+void Juego21::mostrarResultados() {
+    int objetivo = configuracion.getObjetivo();
+    int numero = configuracion.getNumeroJugadores();
+    int puntosDealer = dealer.calcularPuntos();
+
+    cout << "\n===== RESULTADO FINAL =====" << endl;
+    cout << "Dealer: " << puntosDealer << " puntos";
+
+    if (puntosDealer > objetivo) {
+        cout << " (se paso)";
+    }
+
+    cout << "\n" << endl;
+
+    int mejorPuntaje = -1;
+    int ganador = -1;
+
+    for (int i = 0; i < numero; i++) {
+        int puntos = jugadores[i].calcularPuntos();
+
+        cout << jugadores[i].getNombre() << " (" << puntos << "): ";
+
+        if (puntos > objetivo) {
+            cout << "pierde, se paso." << endl;
+        } else {
+            if (puntosDealer > objetivo) {
+                cout << "GANA, el Dealer se paso." << endl;
+            } else if (puntos > puntosDealer) {
+                cout << "GANA al Dealer." << endl;
+            } else if (puntos == puntosDealer) {
+                cout << "EMPATE: gana la mesa." << endl;
+            } else {
+                cout << "pierde contra el Dealer." << endl;
+            }
+
+            // Mejor puntaje entre todos, sin pasarse del objetivo
+            if (puntos > mejorPuntaje) {
+                mejorPuntaje = puntos;
+                ganador = i;
+            }
+        }
+    }
+
+    cout << "\n----------------------------" << endl;
+
+    if (ganador == -1) {
+        cout << "Todos los jugadores se pasaron. Gana la mesa." << endl;
+    } else if (puntosDealer <= objetivo && puntosDealer >= mejorPuntaje) {
+        cout << "Gana la mesa (Dealer) con " << puntosDealer
+             << " puntos." << endl;
+    } else {
+        cout << "Mejor jugador: " << jugadores[ganador].getNombre()
+             << " con " << mejorPuntaje << " puntos." << endl;
+    }
+}
+
+// ==========================================
+// PROGRAMA PRINCIPAL
+// ==========================================
+
+int main() {
+    Juego21 juego;
+
+    juego.iniciar();
+
+    return 0;
+}
